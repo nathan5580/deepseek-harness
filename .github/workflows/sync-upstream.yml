@@ -1,0 +1,35 @@
+name: Sync fork with upstream
+
+on:
+  schedule:
+    # Daily at 03:17 UTC, off the top of the hour.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge upstream default branch into fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          repo="${{ github.repository }}"
+          branch="$(gh api "repos/$repo" --jq .default_branch)"
+          upstream="$(gh api "repos/$repo" --jq .parent.full_name)"
+          upstream_branch="$(gh api "repos/$upstream" --jq .default_branch)"
+          echo "Fork $repo ($branch) at $(gh api "repos/$repo/commits/$branch" --jq .sha | cut -c1-8)"
+          echo "Upstream $upstream ($upstream_branch) at $(gh api "repos/$upstream/commits/$upstream_branch" --jq .sha | cut -c1-8)"
+          response="$(gh api --method POST "repos/$repo/merge-upstream" -f "branch=$branch" --jq .message 2>&1)" || {
+            echo "::error::Upstream sync failed: $response"
+            exit 1
+          }
+          echo "Result: $response"
+          echo "Fork now at $(gh api "repos/$repo/commits/$branch" --jq .sha | cut -c1-8)"
